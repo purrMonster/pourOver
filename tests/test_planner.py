@@ -176,3 +176,31 @@ def test_tasks_are_not_mistaken_for_queries(world, now):
     for text in ("buy milk today", "pay rent this week", "remind me what to pack tomorrow"):
         r = plan_of(text, world, now)
         assert not (r.plan and r.plan.ops and r.plan.ops[0].op == "list_due"), text
+
+
+# ---- response grammar (found by the first Gemma run, 18 Oct 2026) ------
+
+def test_wire_schema_puts_op_first_and_requires_everything():
+    from pourover.schema import wire_schema
+    s = wire_schema()
+    for name in ("CreateTask", "CompleteTask", "ListDue", "DeleteTask"):
+        d = s["$defs"][name]
+        assert list(d["properties"])[0] == "op"
+        assert d["required"] == list(d["properties"])
+        assert d["additionalProperties"] is False
+    assert s["required"] == ["kind", "reason", "candidates", "ops"]
+    flat = json.dumps(s)
+    assert "maxLength" not in flat and "minLength" not in flat and '"default"' not in flat
+
+
+def test_full_null_filled_answer_validates(world, now):
+    # what a model following the wire schema returns: every key present, unused ones null
+    answer = {"kind": "plan", "reason": None, "candidates": None, "ops": [
+        {"op": "create_task", "title": "Water plants", "project": "Home", "labels": ["chores", "pourover"],
+         "assignee": "user_a", "due_at": "2026-11-15T09:00:00+05:30", "reminder_at": "2026-11-15T09:00:00+05:30",
+         "repeat": {"every": 1, "unit": "week", "weekday": "sun"}, "description": None}]}
+    model, seen = fake_model(answer)
+    r = plan_of("water the plants every sunday", world, now, model=model)
+    assert r.ok and r.plan.ops[0].repeat.weekday == "sun"
+    assert model.last_raw == json.dumps(answer)
+    assert seen["body"]["response_format"]["json_schema"]["schema"]["$defs"]["CreateTask"]["required"][0] == "op"

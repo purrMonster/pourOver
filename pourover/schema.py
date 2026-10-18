@@ -71,5 +71,34 @@ class Plan(_Strict):
 
 
 def plan_json_schema() -> dict:
-    """JSON schema handed to llama.cpp so the model cannot return anything else."""
+    """Full Pydantic schema (documentation, validation)."""
     return Plan.model_json_schema()
+
+
+_DROP_KEYS = {"default", "title", "minLength", "maxLength", "minimum", "maximum", "discriminator"}
+
+
+def _wire(node):
+    if isinstance(node, dict):
+        out = {k: _wire(v) for k, v in node.items() if k not in _DROP_KEYS or k == "properties"}
+        if "properties" in node:
+            # every property required, in declaration order. llama.cpp's grammar puts required
+            # keys first and optional ones after, so an optional "op" could never open an object
+            # and the model was steered into list_due (the only variant with nothing required).
+            out["properties"] = {k: _wire(v) for k, v in node["properties"].items()}
+            out["required"] = list(node["properties"])
+            out["additionalProperties"] = False
+        return out
+    if isinstance(node, list):
+        return [_wire(v) for v in node]
+    return node
+
+
+def wire_schema() -> dict:
+    """Schema sent to the model as the response grammar.
+
+    Same shape as plan_json_schema(), but grammar-friendly: every key required (nullable ones
+    as null), keys in a fixed order with "op" first, and no length limits, which llama.cpp turns
+    into huge repetition rules that make sampling crawl. Pydantic still validates the result.
+    """
+    return _wire(plan_json_schema())

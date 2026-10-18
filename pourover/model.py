@@ -15,7 +15,7 @@ from typing import Optional
 import httpx
 from pydantic import ValidationError
 
-from .schema import Plan, plan_json_schema
+from .schema import Plan, wire_schema
 from .timeparse import TimeResult, iso
 from .world import World
 
@@ -76,6 +76,7 @@ class ModelClient:
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.client = client or httpx.Client(timeout=timeout)
+        self.last_raw: Optional[str] = None  # last model reply, kept for eval reports and debugging
 
     def plan(self, text: str, sender: str, world: World, now: datetime, hint: Optional[TimeResult] = None) -> Plan:
         body = {
@@ -84,9 +85,10 @@ class ModelClient:
             "messages": build_messages(text, sender, world, now, hint),
             "response_format": {
                 "type": "json_schema",
-                "json_schema": {"name": "plan", "strict": True, "schema": plan_json_schema()},
+                "json_schema": {"name": "plan", "strict": True, "schema": wire_schema()},
             },
         }
+        self.last_raw = None
         try:
             r = self.client.post(f"{self.base_url}/v1/chat/completions", json=body)
         except (httpx.ConnectError, httpx.TimeoutException, httpx.NetworkError) as exc:
@@ -96,6 +98,7 @@ class ModelClient:
         r.raise_for_status()
         try:
             content = r.json()["choices"][0]["message"]["content"]
+            self.last_raw = content
             return Plan.model_validate(json.loads(content))
         except (KeyError, IndexError, json.JSONDecodeError, ValidationError) as exc:
             raise InvalidPlan(str(exc)) from exc
