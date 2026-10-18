@@ -1,0 +1,60 @@
+# Four hand-written cases so the runner works before the real 50 exist.
+# The real set goes in eval/messages.yaml (see eval/generate-eval-set.prompt.md).
+- id: s001
+  batch: 0
+  category: add_time
+  sender: user_a
+  sent_at: "2026-11-10T09:15:00+05:30"
+  text: "remind me to pay rent tmrw evening"
+  hinglish: false
+  has_typo: false
+  expected:
+    kind: plan
+    reason: null
+    candidates: null
+    ops:
+      - op: create_task
+        title: "Pay rent"
+        project: Bills
+        labels: [pourover]
+        assignee: user_a
+        due_at: "2026-11-11T18:00:00+05:30"
+        reminder_at: "2026-11-11T18:00:00+05:30"
+        repeat: null
+        description: null
+  notes: "Needs the model for the project; offline it lands in Inbox and fails exact match"
+- id: s002
+  batch: 0
+  category: done
+  sender: user_a
+  sent_at: "2026-11-10T09:15:00+05:30"
+  text: "done milk"
+  hinglish: false
+  has_typo: false
+  expected: {kind: needs_clarification, reason: null, candidates: [105, 106], ops: null}
+  notes: "milk matches 105 and 106"
+- id: s003
+  batch: 0
+  category: delete
+  sender: user_a
+  sent_at: "2026-11-10T09:15:00+05:30"
+  text: "delete library book"
+  hinglish: false
+  has_typo: false
+  expected: {kind: refused, reason: not_owner, candidates: null, ops: null}
+  notes: "108 belongs to user_b"
+- id: s004
+  batch: 0
+  category: query
+  sender: user_b
+  sent_at: "2026-11-10T09:15:00+05:30"
+  text: "kya pending hai aaj"
+  hinglish: true
+  has_typo: false
+  expected:
+    kind: plan
+    reason: null
+    candidates: null
+    ops:
+      - {op: list_due, scope: all, window: today}
+  notes: "today window includes overdue"
