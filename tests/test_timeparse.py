@@ -74,3 +74,30 @@ def test_words_inside_other_words_do_not_match():
     for text in ("monthly report draft", "satisfy the landlord", "sunglasses repair"):
         r = parse(text.replace("monthly ", ""), NOW)
         assert r.due is None
+
+
+# Cases found by cross-checking the generated eval sets (18 Oct 2026)
+@pytest.mark.parametrize(
+    "text,due,repeat",
+    [
+        ("clean the litter box evry morning", "2026-11-11T09:00+05:30", ("day", 1, None)),
+        ("book a haircut for satrday afternoon", "2026-11-14T14:00+05:30", None),
+        ("agle hafte bank jana hai", "2026-11-16T09:00+05:30", None),
+        ("pay the maid salary on the 1st of every month", "2026-12-01T09:00+05:30", ("month", 1, None)),
+        ("book haircut 12th morning", "2026-11-12T09:00+05:30", None),
+        ("wash dishes every night at 9pm", "2026-11-10T21:00+05:30", ("day", 1, None)),
+        ("do laundry every saturday morning", "2026-11-14T09:00+05:30", ("week", 1, "sat")),
+        ("pay monthlly water bill", "2026-12-10T09:00+05:30", ("month", 1, None)),
+        ("call mom tommorow", "2026-11-11T09:00+05:30", None),
+        ("buy dairy milk", None, None),  # "dairy" must not become "daily"
+        ("this is very urgent", None, None),  # "very" must not become "every"
+    ],
+)
+def test_eval_set_cases(text, due, repeat):
+    r = parse(text, NOW)
+    assert (r.due.isoformat(timespec="minutes") if r.due else None) == due
+    assert ((r.repeat.unit, r.repeat.every, r.repeat.weekday) if r.repeat else None) == repeat
+
+
+def test_rest_uses_corrected_words():
+    assert parse("pay the maid salary on the 1st of every month", NOW).rest == "pay the maid salary"

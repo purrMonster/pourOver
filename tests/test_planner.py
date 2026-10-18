@@ -143,3 +143,36 @@ def test_prompt_fences_text_and_lists_tasks(world, now):
 def test_schema_roundtrip():
     p = Plan.model_validate({"kind": "no_plan"})
     assert p.ops is None and not p.writes
+
+
+# ---- found by the eval sets (18 Oct 2026) -----------------------------
+
+@pytest.mark.parametrize("text,window", [
+    ("aaj kya due hai", "today"),
+    ("aaj kya kya pending hai?", "today"),
+    ("what tasks do we have for today?", "today"),
+    ("is anything overdue right now?", "overdue"),
+    ("what all is due this week", "week"),
+    ("whats on this wek", "week"),
+    ("iss hafte kya kya karna baki hai", "week"),
+    ("kya is hafte kuch pending hai", "week"),
+])
+def test_questions_are_queries(world, now, text, window):
+    r = plan_of(text, world, now)
+    assert r.path == "fast" and r.plan.ops[0].op == "list_due" and r.plan.ops[0].window == window
+
+
+@pytest.mark.parametrize("text", ["hey good morning", "good morning!! have a great day 😊", "thanks", "ok cool"])
+def test_greetings_are_no_plan(world, now, text):
+    r = plan_of(text, world, now)
+    assert r.plan.kind == "no_plan" and not r.plan.writes
+
+
+def test_offline_never_files_a_question_as_a_task(world, now):
+    assert plan_of("can you remind me what time the vet is tomorrow?", world, now).path == "queue"
+
+
+def test_tasks_are_not_mistaken_for_queries(world, now):
+    for text in ("buy milk today", "pay rent this week", "remind me what to pack tomorrow"):
+        r = plan_of(text, world, now)
+        assert not (r.plan and r.plan.ops and r.plan.ops[0].op == "list_due"), text

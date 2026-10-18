@@ -42,7 +42,7 @@ def make_plan(text: str, sender: str, world: World, now: datetime, model: Option
         except InvalidPlan as exc:
             return PlanResult(None, "invalid", [f"model output unusable: {exc}"])
         except ModelUnavailable:
-            if not hint.found:
+            if not hint.found or text.rstrip().endswith("?") or not hint.rest.strip():
                 return PlanResult(None, "queue")
             # Anything with a time never waits for the model: file it in Inbox now.
             plan = Plan(kind="plan", ops=[create_from_text(text, text, sender, "Inbox", world, now)])
