@@ -1,0 +1,18 @@
+# Fictional household used by the eval set (mirrors section 2 of
+# generate-eval-set.prompt.md). Public data: nothing real in here.
+projects: [Home, Bills, Pets, Groceries, Errands, Work, Appointments, Inbox]
+labels: [chores, pourover, shopping, urgent]
+users:
+  user_a: Ravi
+  user_b: Meera
+tasks:
+  - {id: 101, title: Pay electricity bill, project: Bills, owner: user_a, due_at: "2026-11-10T18:00:00+05:30"}
+  - {id: 102, title: Buy cat food, project: Pets, owner: user_a, due_at: "2026-11-11T09:00:00+05:30"}
+  - {id: 103, title: Call plumber about kitchen tap, project: Home, owner: user_a, due_at: "2026-11-09T09:00:00+05:30"}
+  - {id: 104, title: Renew bike insurance, project: Bills, owner: user_a, due_at: "2026-11-20T09:00:00+05:30"}
+  - {id: 105, title: Buy milk, project: Groceries, owner: user_b, due_at: "2026-11-10T09:00:00+05:30"}
+  - {id: 106, title: Buy milk powder, project: Groceries, owner: user_a, due_at: "2026-11-12T09:00:00+05:30"}
+  - {id: 107, title: Book dentist appointment, project: Appointments, owner: user_b, due_at: "2026-11-13T09:00:00+05:30"}
+  - {id: 108, title: Return library book, project: Errands, owner: user_b, due_at: "2026-11-08T09:00:00+05:30"}
+  - {id: 109, title: Send timesheet, project: Work, owner: user_a, due_at: "2026-11-13T17:00:00+05:30"}
+  - {id: 110, title: Clean litter box, project: Pets, owner: user_a, due_at: "2026-11-10T20:00:00+05:30"}

@@ -1,0 +1,6 @@
+.git
+tests
+eval
+.github
+*.db
+.env

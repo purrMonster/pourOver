@@ -1,0 +1,16 @@
+# Copy to config/users.yaml (git-ignored). Tokens are read from the env vars named here.
+users:
+  user_a:
+    name: Ravi                    # the name people use in messages
+    meowgram_id: "1"              # sender id the meowGram bot sends
+    vikunja_user_id: 1
+    vikunja_token_env: VIKUNJA_TOKEN_USER_A
+    ntfy_topic: pourover-user-a
+    ntfy_token_env: NTFY_TOKEN_USER_A
+  user_b:
+    name: Meera
+    meowgram_id: "2"
+    vikunja_user_id: 2
+    vikunja_token_env: VIKUNJA_TOKEN_USER_B
+    ntfy_topic: pourover-user-b
+    ntfy_token_env: NTFY_TOKEN_USER_B
