@@ -1,7 +1,7 @@
 """Every plan passes through here, fast path and model alike.
 
 normalise() fixes harmless details (pourover label, label order, reminder
-defaulting to the due time). check() rejects anything that points outside
+defaulting to the due time, a mislabelled envelope). check() rejects anything that points outside
 the world snapshot.
 """
 
@@ -14,12 +14,24 @@ from .world import World
 
 
 def normalise(plan: Plan) -> Plan:
+    # Small models write the envelope ("kind", "reason") before the operations and often get it
+    # wrong while the operations themselves are right ({"kind": "no_plan", "ops": [complete 109]}).
+    # Concrete operations win over a "no_plan" label; refusals and clarifications stand as given.
+    if plan.kind == "no_plan" and plan.ops:
+        plan = plan.model_copy(update={"kind": "plan"})
     if plan.kind != "plan":
-        return plan.model_copy(update={"ops": None})
+        return plan.model_copy(update={
+            "ops": None,
+            "reason": plan.reason if plan.kind == "refused" else None,
+            "candidates": (plan.candidates or []) if plan.kind == "needs_clarification" else None,
+        })
     ops = []
     for op in plan.ops or []:
         if isinstance(op, CreateTask):
-            labels = sorted(set(op.labels) | {"pourover"})
+            labels = set(op.labels) | {"pourover"}
+            if op.repeat is None:
+                labels.discard("chores")  # chores means repeating housework; models sprinkle it on one-offs
+            labels = sorted(labels)
             op = op.model_copy(
                 update={
                     "title": op.title.strip(),

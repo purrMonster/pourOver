@@ -75,6 +75,8 @@ def plan_json_schema() -> dict:
     return Plan.model_json_schema()
 
 
+# Filled in by the app, so the model doesn't spend tokens on them.
+_WIRE_SKIP_PROPS = {"reminder_at"}
 _DROP_KEYS = {"default", "title", "minLength", "maxLength", "minimum", "maximum", "discriminator"}
 
 
@@ -85,8 +87,8 @@ def _wire(node):
             # every property required, in declaration order. llama.cpp's grammar puts required
             # keys first and optional ones after, so an optional "op" could never open an object
             # and the model was steered into list_due (the only variant with nothing required).
-            out["properties"] = {k: _wire(v) for k, v in node["properties"].items()}
-            out["required"] = list(node["properties"])
+            out["properties"] = {k: _wire(v) for k, v in node["properties"].items() if k not in _WIRE_SKIP_PROPS}
+            out["required"] = list(out["properties"])
             out["additionalProperties"] = False
         return out
     if isinstance(node, list):
