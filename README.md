@@ -73,7 +73,7 @@ v0.1, not deployed.
 
 ## meowGram
 
-meowGram has one shared room, so pourOver only answers messages that start with `@pourover` (`MEOWGRAM_TRIGGER`), and replies in the room addressed to the sender:
+By default pourOver lives in meowGram's shared lounge and only answers messages that start with `@pourover` (`MEOWGRAM_TRIGGER`), replying addressed to the sender:
 
 ```
 Ravi:     @pourover kal shaam eggs aur bread lena hai
@@ -81,6 +81,7 @@ pourOver: @ravi Added: Buy eggs → Groceries · Wed 11 Nov 18:00 · #shopping
           Added: Buy bread → Groceries · Wed 11 Nov 18:00 · #shopping
 ```
 
+- **Own channel:** set `MEOWGRAM_CHANNEL` to a channel id and pourOver reads and posts only there (`channel_id` on sync and send; messages from other channels are dropped). In its own channel you can set `MEOWGRAM_TRIGGER=` (empty) so every message is a command. meowGram has no channels yet; `channel_id` (query parameter, send body field, message field) is the name meowGram should use when it adds them.
 - It ignores other bots (itself included) and senders not in `config/users.yaml` (`meowgram_id` is the meowGram username).
 - On first start it begins from "now"; it never replays old chat.
 - The cursor and the ids of handled messages live in SQLite, so a restart resumes where it stopped and nothing is filed twice (at most once: a crash mid-message can lose a reply, never duplicate a task).

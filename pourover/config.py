@@ -36,6 +36,7 @@ class Settings:
     meowgram_bot_user: str = ""
     meowgram_bot_password: str = ""
     meowgram_trigger: str = "@pourover"
+    meowgram_channel: str = ""
     meowgram_poll_s: float = 3.0
 
     def user_by_meowgram(self, meowgram_id: str) -> User | None:
@@ -79,5 +80,6 @@ def load_settings(env: dict[str, str] | None = None) -> Settings:
         meowgram_bot_user=env.get("MEOWGRAM_BOT_USER", ""),
         meowgram_bot_password=env.get("MEOWGRAM_BOT_PASSWORD", ""),
         meowgram_trigger=env.get("MEOWGRAM_TRIGGER", "@pourover"),
+        meowgram_channel=env.get("MEOWGRAM_CHANNEL", ""),
         meowgram_poll_s=float(env.get("MEOWGRAM_POLL_S", "3")),
     )

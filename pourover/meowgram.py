@@ -11,9 +11,17 @@ docs/releases/release-2 (epics 2.3 and 2.4), which is not merged yet:
   until UST-2.4.2 lands; it is the field name messages already use.
 - 429 carries Retry-After; 503 means back off.
 
-meowGram has one shared room, so the bot sees every household message. It only
-answers messages that start with the trigger (default "@pourover"), ignores
-other bots including itself, and ignores senders it doesn't know.
+Channels: set MEOWGRAM_CHANNEL to a channel id and the bot reads and posts only
+there: it sends channel_id on sync and send, and drops any message whose
+channel_id is another channel. meowGram has no channels yet, so these names
+(query parameter and body field channel_id, message field channel_id) are the
+contract for meowGram to follow when it adds them. With no channel set, the bot
+works in the one shared lounge as before.
+
+The trigger (default "@pourover") decides which messages are for pourOver. In
+a dedicated channel it can be switched off (MEOWGRAM_TRIGGER empty): then every
+message there is a command. The bot always ignores other bots including
+itself, and senders it doesn't know.
 
 Delivery is at most once: a message id is recorded before it is handled, so a
 crash mid-way can lose a reply (the sender just asks again) but can never file
@@ -57,11 +65,14 @@ class Message:
     sender_kind: str
     text: str
     created_at: str
+    channel_id: str = ""
 
 
 class MeowGramClient:
-    def __init__(self, base_url: str, bot_user: str, bot_password: str, client: Optional[httpx.Client] = None):
+    def __init__(self, base_url: str, bot_user: str, bot_password: str, client: Optional[httpx.Client] = None,
+                 channel_id: str = ""):
         self.base = base_url.rstrip("/")
+        self.channel_id = channel_id
         self.client = client or httpx.Client(timeout=15.0, auth=(bot_user, bot_password))
 
     def _check(self, r: httpx.Response) -> httpx.Response:
@@ -79,6 +90,8 @@ class MeowGramClient:
         params = {"after": after}
         if after_id:
             params["after_id"] = after_id
+        if self.channel_id:
+            params["channel_id"] = self.channel_id
         try:
             r = self._check(self.client.get(self.base + SYNC_PATH, params=params))
         except httpx.HTTPError as exc:
@@ -91,6 +104,7 @@ class MeowGramClient:
                 sender_kind=m.get("sender_kind") or "human",
                 text=m.get("text_content", ""),
                 created_at=m["created_at"],
+                channel_id=str(m.get("channel_id") or ""),
             )
             for m in r.json() or []
         ]
@@ -98,14 +112,20 @@ class MeowGramClient:
 
     def send(self, text: str, idempotency_key: str) -> None:
         try:
-            self._check(self.client.post(self.base + SEND_PATH, json={"text_content": text},
+            body = {"text_content": text}
+            if self.channel_id:
+                body["channel_id"] = self.channel_id
+            self._check(self.client.post(self.base + SEND_PATH, json=body,
                                          headers={"Idempotency-Key": idempotency_key}))
         except httpx.HTTPError as exc:
             raise MeowGramError(f"meowGram unreachable: {exc}") from exc
 
 
 def addressed(text: str, trigger: str) -> Optional[str]:
-    """The command if the message is for pourOver ("@pourover buy milk" -> "buy milk"), else None."""
+    """The command if the message is for pourOver ("@pourover buy milk" -> "buy milk"), else None.
+    With no trigger (a dedicated channel) every message is a command."""
+    if not trigger:
+        return text.strip()
     m = re.match(rf"^\s*{re.escape(trigger)}\b[\s,:\-]*(.*)$", text, re.I | re.S)
     if not m:
         return None
@@ -148,6 +168,8 @@ class MeowGramBot:
                 return answered
 
     def _process(self, msg: Message) -> int:
+        if self.client.channel_id and msg.channel_id and msg.channel_id != self.client.channel_id:
+            return 0  # another channel: not ours, even if the server sent it
         if msg.sender_kind == "bot" or (self.bot_username and msg.username.lower() == self.bot_username):
             return 0
         command = addressed(msg.text, self.trigger)
@@ -160,7 +182,7 @@ class MeowGramBot:
             log.warning("ignoring message from unknown meowGram user %r", msg.username or msg.sender_id)
             return 0
         if not command:
-            reply = "Tell me what to do, e.g. @pourover buy eggs tomorrow evening"
+            reply = f"Tell me what to do, e.g. {(self.trigger + ' ') if self.trigger else ''}buy eggs tomorrow evening"
         else:
             reply = self.handle(user, command, "meowgram")
         self.client.send(f"@{msg.username or user.name} {reply}", idempotency_key=f"pourover-reply-{msg.id}")

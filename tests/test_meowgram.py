@@ -26,10 +26,13 @@ class FakeMeowGram:
         self.fail_next = None
         self.n = 0
         self.auth_seen = set()
+        self.bodies = []
+        self.sync_params = []
 
-    def post(self, username, text, kind="human", sender_id=None):
+    def post(self, username, text, kind="human", sender_id=None, channel_id=None):
         self.n += 1
-        self.messages.append({"id": f"00000000-0000-0000-0000-{self.n:012d}", "sender_id": sender_id or f"sid-{username}",
+        extra = {"channel_id": channel_id} if channel_id else {}
+        self.messages.append({**extra, "id": f"00000000-0000-0000-0000-{self.n:012d}", "sender_id": sender_id or f"sid-{username}",
                               "sender_kind": kind, "username": username, "text_content": text,
                               "created_at": f"2026-11-10T04:{self.n:02d}:00Z"})
 
@@ -39,6 +42,7 @@ class FakeMeowGram:
             code, self.fail_next = self.fail_next, None
             return httpx.Response(code, headers={"Retry-After": "7"})
         if request.method == "GET":
+            self.sync_params.append(dict(request.url.params))
             after = request.url.params["after"].replace("Z", "+00:00")
             after_id = request.url.params.get("after_id", "")
             key = (datetime.fromisoformat(after), after_id)
@@ -48,6 +52,7 @@ class FakeMeowGram:
             headers = {"X-Has-More": "true"} if len(rows) > self.page_size else {}
             return httpx.Response(200, json=page, headers=headers)
         body = json.loads(request.content)
+        self.bodies.append(body)
         key = request.headers["Idempotency-Key"]
         if key not in {k for k, _ in self.sent}:
             self.sent.append((key, body["text_content"]))
@@ -174,3 +179,41 @@ def test_lounge_to_vikunja_end_to_end(tmp_path, world):
     assert fake.sent[0][1].startswith("@ravi Added: Batteries → Home · Wed 11 Nov 18:00")
     assert "only they can delete" in fake.sent[1][1]
     assert [r["channel"] for r in store.commands()] == ["meowgram", "meowgram"]
+
+
+def channel_bot(tmp_path, fake, channel, trigger):
+    client = MeowGramClient("http://mg", "pourover-bot", "pw", channel_id=channel,
+                            client=httpx.Client(transport=httpx.MockTransport(fake.handler)))
+    handled = []
+    users = {k: u.__class__(**{**u.__dict__, "meowgram_id": {"user_a": "ravi", "user_b": "meera"}[k]})
+             for k, u in USERS.items()}
+    bot = MeowGramBot(client, lambda u, t, c: handled.append(t) or f"ok: {t}", users,
+                      Store(str(tmp_path / "c.db")), trigger=trigger, now=lambda: START)
+    return bot, handled
+
+
+def test_channel_is_sent_and_other_channels_are_ignored(tmp_path):
+    fake = FakeMeowGram()
+    bot, handled = channel_bot(tmp_path, fake, "tasks", "@pourover")
+    fake.post("ravi", "@pourover buy eggs", channel_id="tasks")
+    fake.post("ravi", "@pourover buy wine", channel_id="lounge")  # server should filter; the bot checks anyway
+    bot.poll_once()
+    assert handled == ["buy eggs"]
+    assert all(p.get("channel_id") == "tasks" for p in fake.sync_params)
+    assert fake.bodies == [{"text_content": "@ravi ok: buy eggs", "channel_id": "tasks"}]
+
+
+def test_no_trigger_in_a_dedicated_channel(tmp_path):
+    fake = FakeMeowGram()
+    bot, handled = channel_bot(tmp_path, fake, "tasks", "")
+    fake.post("meera", "kal subah rent dena hai", channel_id="tasks")
+    fake.post("pourover-bot", "@meera ok", kind="bot", channel_id="tasks")
+    bot.poll_once()
+    assert handled == ["kal subah rent dena hai"]
+
+
+def test_no_channel_sends_no_channel_field(lounge):
+    fake, bot, _ = lounge
+    fake.post("ravi", "@pourover buy eggs")
+    bot.poll_once()
+    assert "channel_id" not in fake.sync_params[0] and fake.bodies == [{"text_content": "@ravi ok: buy eggs"}]

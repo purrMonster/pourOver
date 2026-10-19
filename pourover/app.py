@@ -56,7 +56,8 @@ def create_app(settings: Settings | None = None, service: Service | None = None)
     threads = [threading.Thread(target=queue_loop, name="queue", daemon=True)]
     if settings.meowgram_url:
         bot = MeowGramBot(
-            MeowGramClient(settings.meowgram_url, settings.meowgram_bot_user, settings.meowgram_bot_password),
+            MeowGramClient(settings.meowgram_url, settings.meowgram_bot_user, settings.meowgram_bot_password,
+                           channel_id=settings.meowgram_channel),
             service.handle, settings.users, service.store,
             trigger=settings.meowgram_trigger, bot_username=settings.meowgram_bot_user,
         )
