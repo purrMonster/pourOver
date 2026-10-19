@@ -9,8 +9,8 @@ from typing import Literal, Optional
 
 from .fastpath import create_from_text, fast_plan
 from .model import InvalidPlan, ModelClient, ModelUnavailable
-from .schema import Plan
-from .timeparse import parse
+from .schema import CreateTask, Plan
+from .timeparse import TimeResult, iso, parse
 from .validator import check, normalise, not_owned_deletes
 from .world import World
 
@@ -28,6 +28,26 @@ class PlanResult:
         return self.plan is not None and not self.errors
 
 
+def apply_time_hint(plan: Plan, hint: TimeResult) -> Plan:
+    """The plain-code parser owns "when"; the model owns "what".
+
+    When the parser read a date, time or repeat, it overrides the model's (it is tested on
+    every calendar case; models miscount days). When it read nothing, the model may not invent
+    a date either, unless it found a repeat the parser missed ("har subah").
+    """
+    if not plan.ops:  # runs before normalise(), so a mislabelled "no_plan" with ops is still covered
+        return plan
+    ops = []
+    for op in plan.ops:
+        if isinstance(op, CreateTask):
+            if hint.found:
+                op = op.model_copy(update={"due_at": iso(hint.due), "reminder_at": iso(hint.due), "repeat": hint.repeat})
+            elif op.repeat is None:
+                op = op.model_copy(update={"due_at": None, "reminder_at": None})
+        ops.append(op)
+    return plan.model_copy(update={"ops": ops})
+
+
 def make_plan(text: str, sender: str, world: World, now: datetime, model: Optional[ModelClient]) -> PlanResult:
     plan = fast_plan(text, sender, world, now)
     path: Path = "fast"
@@ -37,7 +57,7 @@ def make_plan(text: str, sender: str, world: World, now: datetime, model: Option
         try:
             if model is None:
                 raise ModelUnavailable("no model configured")
-            plan = model.plan(text, sender, world, now, hint)
+            plan = apply_time_hint(model.plan(text, sender, world, now, hint), hint)
             path = "model"
         except InvalidPlan as exc:
             return PlanResult(None, "invalid", [f"model output unusable: {exc}"])

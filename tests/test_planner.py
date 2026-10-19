@@ -176,3 +176,99 @@ def test_tasks_are_not_mistaken_for_queries(world, now):
     for text in ("buy milk today", "pay rent this week", "remind me what to pack tomorrow"):
         r = plan_of(text, world, now)
         assert not (r.plan and r.plan.ops and r.plan.ops[0].op == "list_due"), text
+
+
+# ---- response grammar (found by the first Gemma run, 18 Oct 2026) ------
+
+def test_wire_schema_puts_op_first_and_requires_everything():
+    from pourover.schema import wire_schema
+    s = wire_schema()
+    for name in ("CreateTask", "CompleteTask", "ListDue", "DeleteTask"):
+        d = s["$defs"][name]
+        assert list(d["properties"])[0] == "op"
+        assert d["required"] == list(d["properties"])
+        assert d["additionalProperties"] is False
+    assert s["required"] == ["kind", "reason", "candidates", "ops"]
+    flat = json.dumps(s)
+    assert "maxLength" not in flat and "minLength" not in flat and '"default"' not in flat
+
+
+def test_full_null_filled_answer_validates(world, now):
+    # what a model following the wire schema returns: every key present, unused ones null
+    answer = {"kind": "plan", "reason": None, "candidates": None, "ops": [
+        {"op": "create_task", "title": "Water plants", "project": "Home", "labels": ["chores", "pourover"],
+         "assignee": "user_a", "due_at": "2026-11-15T09:00:00+05:30", "reminder_at": "2026-11-15T09:00:00+05:30",
+         "repeat": {"every": 1, "unit": "week", "weekday": "sun"}, "description": None}]}
+    model, seen = fake_model(answer)
+    r = plan_of("water the plants every sunday", world, now, model=model)
+    assert r.ok and r.plan.ops[0].repeat.weekday == "sun"
+    assert model.last_raw == json.dumps(answer)
+    assert seen["body"]["response_format"]["json_schema"]["schema"]["$defs"]["CreateTask"]["required"][0] == "op"
+
+
+# ---- second Gemma run (18 Oct 2026): right ops, wrong envelope ---------
+
+def null_filled(kind, ops, reason="not_owner", candidates=None):
+    return {"kind": kind, "reason": reason, "candidates": candidates or [], "ops": ops}
+
+
+def test_ops_win_over_a_no_plan_label(world, now):
+    model, _ = fake_model(null_filled("no_plan", [{"op": "complete_task", "task_id": 109}], candidates=[109]))
+    r = plan_of("sent the timesheet", world, now, model=model)
+    assert r.plan.kind == "plan" and r.plan.ops[0].task_id == 109
+    assert r.plan.reason is None and r.plan.candidates is None
+
+
+def test_stray_reason_cleared_on_no_plan(world, now):
+    model, _ = fake_model(null_filled("no_plan", None))
+    r = plan_of("blah blah nothing", world, now, model=model)
+    assert (r.plan.kind, r.plan.reason, r.plan.candidates) == ("no_plan", None, None)
+
+
+def test_refusal_keeps_its_reason(world, now):
+    model, _ = fake_model(null_filled("refused", None))
+    r = plan_of("get rid of meera's dentist thing", world, now, model=model)
+    assert (r.plan.kind, r.plan.reason) == ("refused", "not_owner")
+
+
+def create(title, project="Home", due=None, repeat=None):
+    return {"op": "create_task", "title": title, "project": project, "labels": ["pourover"], "assignee": "user_a",
+            "due_at": due, "repeat": repeat, "description": None}
+
+
+def test_parser_owns_the_time(world, now):
+    # model miscounts the day; parser knows tmrw = Wed 11 Nov
+    model, _ = fake_model(null_filled("plan", [create("Pay rent", "Bills", "2026-11-12T09:00:00+05:30")], reason=None))
+    op = plan_of("pay rent tmrw", world, now, model=model).plan.ops[0]
+    assert op.due_at == op.reminder_at == "2026-11-11T09:00:00+05:30"
+
+
+def test_model_may_not_invent_a_date(world, now):
+    model, _ = fake_model(null_filled("plan", [create("Buy batteries", "Groceries", "2026-11-10T09:00:00+05:30")], reason=None))
+    op = plan_of("buy batteries", world, now, model=model).plan.ops[0]
+    assert op.due_at is None and op.reminder_at is None
+
+
+def test_model_repeat_kept_when_parser_missed_it(world, now):
+    rep = {"every": 1, "unit": "day", "weekday": None}
+    model, _ = fake_model(null_filled("plan", [create("Feed cats", "Pets", "2026-11-11T09:00:00+05:30", rep)], reason=None))
+    op = plan_of("billi ko khana dena subah subah, roz ka kaam", world, now, model=model).plan.ops[0]
+    assert op.repeat is not None
+
+
+def test_wire_schema_skips_reminder():
+    from pourover.schema import wire_schema
+    assert "reminder_at" not in wire_schema()["$defs"]["CreateTask"]["properties"]
+
+
+def test_chores_only_on_repeating_tasks(world, now):
+    one_off = create("Dust ceiling fan")
+    one_off["labels"] = ["pourover", "chores"]
+    model, _ = fake_model(null_filled("plan", [one_off], reason=None))
+    assert plan_of("dust the celing fan", world, now, model=model).plan.ops[0].labels == ["pourover"]
+
+
+def test_no_invented_date_even_under_a_no_plan_label(world, now):
+    model, _ = fake_model(null_filled("no_plan", [create("Sharpen kitchen knives", due="2026-11-10T09:00:00+05:30")]))
+    op = plan_of("sharpen the kitchen knives", world, now, model=model).plan.ops[0]
+    assert op.due_at is None
