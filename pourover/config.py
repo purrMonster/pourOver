@@ -32,6 +32,11 @@ class Settings:
     queue_expiry_hours: int
     queue_interval_s: int
     users: dict[str, User]
+    meowgram_url: str | None = None
+    meowgram_bot_user: str = ""
+    meowgram_bot_password: str = ""
+    meowgram_trigger: str = "@pourover"
+    meowgram_poll_s: float = 3.0
 
     def user_by_meowgram(self, meowgram_id: str) -> User | None:
         return next((u for u in self.users.values() if u.meowgram_id == str(meowgram_id)), None)
@@ -70,4 +75,9 @@ def load_settings(env: dict[str, str] | None = None) -> Settings:
         queue_expiry_hours=int(env.get("POUROVER_QUEUE_EXPIRY_HOURS", "6")),
         queue_interval_s=int(env.get("POUROVER_QUEUE_INTERVAL_S", "60")),
         users=load_users(env.get("POUROVER_USERS_FILE", "/config/users.yaml"), env),
+        meowgram_url=(env.get("MEOWGRAM_URL") or "").rstrip("/") or None,
+        meowgram_bot_user=env.get("MEOWGRAM_BOT_USER", ""),
+        meowgram_bot_password=env.get("MEOWGRAM_BOT_PASSWORD", ""),
+        meowgram_trigger=env.get("MEOWGRAM_TRIGGER", "@pourover"),
+        meowgram_poll_s=float(env.get("MEOWGRAM_POLL_S", "3")),
     )

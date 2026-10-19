@@ -29,6 +29,16 @@ CREATE TABLE IF NOT EXISTS pending (
   summary TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS cursor (
+  name TEXT PRIMARY KEY,
+  after TEXT NOT NULL,
+  after_id TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS seen (
+  channel TEXT NOT NULL,
+  message_id TEXT NOT NULL,
+  PRIMARY KEY (channel, message_id)
+);
 CREATE TABLE IF NOT EXISTS queue (
   id INTEGER PRIMARY KEY,
   sender TEXT NOT NULL,
@@ -100,3 +110,16 @@ class Store:
 
     def set_status(self, queue_id: int, status: str) -> None:
         self._exec("UPDATE queue SET status=? WHERE id=?", (status, queue_id))
+
+    # ---- chat adapters ------------------------------------------------
+    def get_cursor(self, name: str) -> tuple[Optional[str], str]:
+        row = self._exec("SELECT after, after_id FROM cursor WHERE name=?", (name,)).fetchone()
+        return (row["after"], row["after_id"]) if row else (None, "")
+
+    def set_cursor(self, name: str, after: str, after_id: str) -> None:
+        self._exec("INSERT OR REPLACE INTO cursor VALUES (?,?,?)", (name, after, after_id))
+
+    def mark_seen(self, channel: str, message_id: str) -> bool:
+        """True the first time a message id is seen, False after."""
+        cur = self._exec("INSERT OR IGNORE INTO seen VALUES (?,?)", (channel, message_id))
+        return cur.rowcount == 1
