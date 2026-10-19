@@ -41,7 +41,7 @@ class FakeVikunja:
         t = self.tasks[task_id]
         self.tasks[task_id] = TaskRef(t.id, t.title, t.project, t.owner, t.due_at, True)
         self.calls.append(("complete", task_id))
-        return {}
+        return {"done": True}
 
     def delete(self, task_id):
         self.tasks.pop(task_id)

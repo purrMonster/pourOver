@@ -64,8 +64,15 @@ Both sets were generated with the prompt in `pourover-docs/eval/` and reviewed b
 
 ## Status
 
-v0.1, not deployed. Built and tested against fakes; not yet run against a real Vikunja or llama-swap. Before deploying:
+v0.1, not deployed.
 
-- Contract test against the pinned Vikunja version (task filter syntax, reminders, labels and assignee endpoints changed across releases).
-- Check that the llama-swap build accepts `response_format: json_schema`.
-- The Compose stack goes in `purrbrews-containers`, internal only behind Traefik, with a Gatus check.
+- **Vikunja: verified.** The client speaks Vikunja's API v2 and is checked against the real, pinned Vikunja 2.7.0 (the version purrBrews runs) by `scripts/contract-vikunja.sh`: it downloads the release binary, checks its sha256, starts it on localhost with a throwaway SQLite, and runs `tests/contract` (client calls plus the whole service end to end). Bump the version and `scripts/vikunja.sha256` together with the stack.
+- **llama-swap:** accepts `response_format: json_schema` (first real eval runs on roastery, Oct 2026).
+- **To do:** the Compose stack in `purrbrews-containers` (internal only behind Traefik, Gatus check) and the meowGram adapter.
+
+## Vikunja notes
+
+- API v2 (`/api/v2`). v1 is frozen at 2.4.0 and its `/tasks/all` already fails on 2.7.0.
+- Labels belong to the user who made them, so pourOver creates its four labels (`chores`, `pourover`, `shopping`, `urgent`) for each user on first use.
+- Anyone with write access to a shared project can delete any task in it. "Delete only your own tasks" is enforced by pourOver.
+- Marking a repeating task done re-opens it with the next due date; the reply says when.

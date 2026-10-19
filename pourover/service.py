@@ -144,8 +144,11 @@ class Service:
                     created.append(task["id"])
                     lines.append(replies.created(op, world, user.key))
                 elif op.op == "complete_task":
-                    backend.complete(op.task_id)
-                    lines.append(f"Done: {world.task(op.task_id).title} ✓")
+                    after = backend.complete(op.task_id) or {}
+                    line = f"Done: {world.task(op.task_id).title} ✓"
+                    if after.get("done") is False and after.get("due_date"):  # a repeat: Vikunja re-opened it
+                        line += f" (next: {replies.when(after['due_date'], now.tzinfo)})"
+                    lines.append(line)
                 elif op.op == "list_due":
                     lines.append(replies.due_list(world, op.window, now))
                 elif op.op == "delete_task":
