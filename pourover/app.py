@@ -12,6 +12,7 @@ from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from .config import Settings, load_settings
+from .meowgram import MeowGramBot, MeowGramClient
 from .model import ModelClient
 from .ntfy import Ntfy
 from .service import Service
@@ -52,10 +53,21 @@ def create_app(settings: Settings | None = None, service: Service | None = None)
             except Exception:
                 logging.getLogger("pourover").exception("queue drain failed")
 
+    threads = [threading.Thread(target=queue_loop, name="queue", daemon=True)]
+    if settings.meowgram_url:
+        bot = MeowGramBot(
+            MeowGramClient(settings.meowgram_url, settings.meowgram_bot_user, settings.meowgram_bot_password,
+                           channel_id=settings.meowgram_channel),
+            service.handle, settings.users, service.store,
+            trigger=settings.meowgram_trigger, bot_username=settings.meowgram_bot_user,
+        )
+        threads.append(threading.Thread(target=bot.run, args=(stop, settings.meowgram_poll_s), name="meowgram",
+                                        daemon=True))
+
     @asynccontextmanager
     async def lifespan(_app):
-        worker = threading.Thread(target=queue_loop, name="queue", daemon=True)
-        worker.start()
+        for t in threads:
+            t.start()
         yield
         stop.set()
 

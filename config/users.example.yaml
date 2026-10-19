@@ -2,14 +2,14 @@
 users:
   user_a:
     name: Ravi                    # the name people use in messages
-    meowgram_id: "1"              # sender id the meowGram bot sends
+    meowgram_id: ravi             # meowGram username (or sender id)
     vikunja_user_id: 1
     vikunja_token_env: VIKUNJA_TOKEN_USER_A
     ntfy_topic: pourover-user-a
     ntfy_token_env: NTFY_TOKEN_USER_A
   user_b:
     name: Meera
-    meowgram_id: "2"
+    meowgram_id: meera
     vikunja_user_id: 2
     vikunja_token_env: VIKUNJA_TOKEN_USER_B
     ntfy_topic: pourover-user-b

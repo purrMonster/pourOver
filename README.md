@@ -68,7 +68,24 @@ v0.1, not deployed.
 
 - **Vikunja: verified.** The client speaks Vikunja's API v2 and is checked against the real, pinned Vikunja 2.7.0 (the version purrBrews runs) by `scripts/contract-vikunja.sh`: it downloads the release binary, checks its sha256, starts it on localhost with a throwaway SQLite, and runs `tests/contract` (client calls plus the whole service end to end). Bump the version and `scripts/vikunja.sha256` together with the stack.
 - **llama-swap:** accepts `response_format: json_schema` (first real eval runs on roastery, Oct 2026).
-- **To do:** the Compose stack in `purrbrews-containers` (internal only behind Traefik, Gatus check) and the meowGram adapter.
+- **meowGram: built against the plan, not the code.** The adapter follows meowGram Release 2's planned bot API (Basic-auth bot, polling `GET /api/messages/sync`, `POST /api/messages` with an `Idempotency-Key`). Those endpoints aren't merged in meowGram yet; the send body `{"text_content": ...}` is an assumption to confirm when UST-2.4.2 lands.
+- **To do:** the Compose stack in `purrbrews-containers` (internal only behind Traefik, Gatus check).
+
+## meowGram
+
+By default pourOver lives in meowGram's shared lounge and only answers messages that start with `@pourover` (`MEOWGRAM_TRIGGER`), replying addressed to the sender:
+
+```
+Ravi:     @pourover kal shaam eggs aur bread lena hai
+pourOver: @ravi Added: Buy eggs → Groceries · Wed 11 Nov 18:00 · #shopping
+          Added: Buy bread → Groceries · Wed 11 Nov 18:00 · #shopping
+```
+
+- **Own channel:** set `MEOWGRAM_CHANNEL` to a channel id and pourOver reads and posts only there (`channel_id` on sync and send; messages from other channels are dropped). In its own channel you can set `MEOWGRAM_TRIGGER=` (empty) so every message is a command. meowGram has no channels yet; `channel_id` (query parameter, send body field, message field) is the name meowGram should use when it adds them.
+- It ignores other bots (itself included) and senders not in `config/users.yaml` (`meowgram_id` is the meowGram username).
+- On first start it begins from "now"; it never replays old chat.
+- The cursor and the ids of handled messages live in SQLite, so a restart resumes where it stopped and nothing is filed twice (at most once: a crash mid-message can lose a reply, never duplicate a task).
+- 429/503 from meowGram are honoured with `Retry-After`; other errors back off up to 5 minutes.
 
 ## Vikunja notes
 
