@@ -14,6 +14,7 @@ import argparse
 import json
 import re
 import sys
+import time
 from collections import Counter, defaultdict
 from datetime import datetime
 from pathlib import Path
@@ -37,14 +38,14 @@ def norm_title(title: str) -> str:
     return " ".join(w for w in words if w not in ("the", "a", "an"))
 
 
-def _canon(plan: Optional[Plan]) -> Optional[dict]:
+def _canon(plan: Optional[Plan], titles: bool = True) -> Optional[dict]:
     if plan is None:
         return None
     ops = []
     for op in plan.ops or []:
         d = op.model_dump()
         if op.op == "create_task":
-            d["title"] = norm_title(d["title"])
+            d["title"] = norm_title(d["title"]) if titles else None
             d["labels"] = sorted(d["labels"])
             d.pop("description", None)  # free text, not scored
         ops.append(d)
@@ -56,22 +57,29 @@ def _deletes(plan: Optional[Plan]) -> set[int]:
     return {op.task_id for op in (plan.ops if plan and plan.ops else []) if op.op == "delete_task"}
 
 
-def score(items: list[dict], world: World, model: Optional[ModelClient]) -> dict:
+def score(items: list[dict], world: World, model: Optional[ModelClient], progress: bool = False) -> dict:
     rows = []
     for it in items:
         now = datetime.fromisoformat(it["sent_at"])
         expected = Plan.model_validate(it["expected"])
+        started = time.monotonic()
         result = make_plan(it["text"], it["sender"], world, now, model)
+        seconds = round(time.monotonic() - started, 2)
         actual = result.plan
         exact = _canon(actual) == _canon(expected)
+        same_but_title = exact or _canon(actual, titles=False) == _canon(expected, titles=False)
         wrong_delete = bool(_deletes(actual) - _deletes(expected))
         query_write = it.get("category") == "query" and bool(actual and actual.writes)
         rows.append({
             "id": it["id"], "category": it.get("category"), "text": it["text"], "path": result.path,
-            "valid": result.path not in ("invalid",), "exact": exact, "wrong_delete": wrong_delete,
+            "valid": result.path not in ("invalid",), "exact": exact, "exact_but_title": same_but_title, "wrong_delete": wrong_delete,
             "query_write": query_write, "errors": result.errors,
-            "expected": _canon(expected), "actual": _canon(actual),
+            "expected": _canon(expected), "actual": _canon(actual), "seconds": seconds,
+            "raw": model.last_raw if (model and result.path in ("model", "invalid")) else None,
         })
+        if progress:
+            mark = "✓" if exact else "✗"
+            print(f"  {mark} {it['id']} [{result.path}] {seconds:.1f}s", flush=True)
     n = len(rows) or 1
     by_cat = defaultdict(lambda: [0, 0])
     for r in rows:
@@ -81,10 +89,12 @@ def score(items: list[dict], world: World, model: Optional[ModelClient]) -> dict
         "count": len(rows),
         "valid": sum(r["valid"] for r in rows) / n,
         "exact": sum(r["exact"] for r in rows) / n,
+        "exact_ignoring_titles": sum(r["exact_but_title"] for r in rows) / n,
         "wrong_deletes": sum(r["wrong_delete"] for r in rows),
         "query_writes": sum(r["query_write"] for r in rows),
         "paths": dict(Counter(r["path"] for r in rows)),
         "by_category": {k: f"{v[0]}/{v[1]}" for k, v in sorted(by_cat.items())},
+        "median_seconds": sorted(r["seconds"] for r in rows)[len(rows) // 2] if rows else 0,
     }
     summary["go"] = (summary["valid"] >= THRESHOLDS["valid"] and summary["exact"] >= THRESHOLDS["exact"]
                      and summary["wrong_deletes"] == 0 and summary["query_writes"] == 0)
@@ -147,6 +157,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap.add_argument("--llm-url")
     ap.add_argument("--model", default="none")
     ap.add_argument("--out", default="eval/results")
+    ap.add_argument("--timeout", type=float, default=180, help="seconds to wait for one model answer")
     ap.add_argument("--check", action="store_true", help="only lint the dataset, run nothing")
     args = ap.parse_args(argv)
 
@@ -159,8 +170,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         errors = [f for f in found if not f.startswith("warning:")]
         print(f"{args.messages}: {len(items)} items, {len(errors)} problems, {len(found) - len(errors)} warnings")
         return 1 if errors else 0
-    model = ModelClient(args.llm_url, args.model, timeout=120) if args.llm_url else None
-    report = score(items, world, model)
+    model = ModelClient(args.llm_url, args.model, timeout=args.timeout) if args.llm_url else None
+    report = score(items, world, model, progress=model is not None)
     report["summary"].update({"model": args.model if model else "none (fast path + fallback only)",
                               "messages": args.messages, "run_at": datetime.now().isoformat(timespec="seconds")})
 
@@ -171,7 +182,8 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     s = report["summary"]
     print(f"{s['model']}: {s['count']} messages · valid {s['valid']:.0%} · exact {s['exact']:.0%} · "
-          f"wrong deletes {s['wrong_deletes']} · query writes {s['query_writes']} · {'GO' if s['go'] else 'NO GO'}")
+          f"(ignoring titles {s['exact_ignoring_titles']:.0%}) · wrong deletes {s['wrong_deletes']} · query writes {s['query_writes']} · median {s['median_seconds']}s · "
+          f"{'GO' if s['go'] else 'NO GO'}")
     print("by category:", s["by_category"], "· paths:", s["paths"])
     for r in report["rows"]:
         if not r["exact"]:
