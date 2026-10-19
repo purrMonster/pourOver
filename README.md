@@ -47,10 +47,20 @@ uvicorn pourover.app:create_app --factory --port 8000
 ## Eval
 
 ```sh
-python -m pourover.evaluate --messages eval/messages.yaml --llm-url http://roastery.lan:8080 --model gemma-4-12b
+python -m pourover.evaluate --check --messages eval/messages.yaml          # lint the set
+python -m pourover.evaluate --messages eval/messages.yaml \
+    --llm-url http://roastery.lan:8080 --model gemma-4-12b                 # score a model
 ```
 
-Runs the full planner (fast path, then model) against expected plans, with no Vikunja writes. A model ships only with 100% valid plans, at least 90% exact, zero wrong deletes and zero writes from questions. The set itself is generated with the prompt in `pourover-docs/eval/`; `eval/sample.yaml` holds four cases so the runner works before then. Without `--llm-url` it scores the fast path and offline fallback alone.
+Runs the full planner (fast path, then model) against expected plans, with no Vikunja writes, and writes a report to `eval/results/<model>.json`. A model ships only with 100% valid plans, at least 90% exact, zero wrong deletes and zero writes from questions. Titles are compared without case, punctuation or articles.
+
+| Set | Items | What |
+| --- | --- | --- |
+| `eval/messages.yaml` | 50 | Set A, the main gate (m001–m050) |
+| `eval/messages-b.yaml` | 51 | Set B, a second opinion (m100–m150) |
+| `eval/sample.yaml` | 4 | Smoke test for the runner |
+
+Both sets were generated with the prompt in `pourover-docs/eval/` and reviewed by hand plus `--check`. Without `--llm-url` the runner scores the fast path and offline fallback alone (set A: 22% exact, no wrong deletes, no writes from questions): the floor a model has to beat.
 
 ## Status
 

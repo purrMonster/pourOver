@@ -17,11 +17,19 @@ from .world import World
 
 _TRAIL = r"[\s!.?🙏✅👍]*$"
 
-QUERY = re.compile(
-    r"^(?:what'?s|whats|what\s+is|what\s+are|anything|kya|show|list|any)\b.*\b(due|pending|left|baaki|baki|overdue|today|aaj|week|hafte)\b"
-    r"|^(?:due|overdue|today|aaj\s+kya\s+hai|pending)" + _TRAIL,
-    re.I,
-)
+# A question about what's on. Read-only, so this leans generous: a false hit
+# costs one list, a miss could file the question as a task.
+QUERY_CUE = re.compile(r"\b(what'?s|whats|what|kya|anything|any|show|list|is\s+there|kuch)\b", re.I)
+QUERY_TOPIC = re.compile(
+    r"\b(due|pending|left|baaki|baki|overdue|today|aaj|week|wek|hafte|tasks?|on|plate|todo|to-?do)\b", re.I)
+QUERY_ONLY = re.compile(r"^(?:due|overdue|today|pending|aaj\s+kya\s+hai|tasks)" + _TRAIL, re.I)
+ACTION_START = re.compile(r"^(?:remind|add|buy|pay|call|book|delete|remove|cancel|done)\b", re.I)
+
+GREETING_WORDS = {
+    "hi", "hii", "hello", "hey", "heya", "yo", "good", "gm", "gn", "morning", "night", "evening", "afternoon",
+    "thanks", "thank", "you", "thx", "ty", "ok", "okay", "cool", "nice", "have", "a", "great", "day", "there",
+    "namaste", "bye", "lol", "haha",
+}
 DONE_PREFIX = re.compile(r"^(?:done|completed|finished)\s*[:\-]?\s+(.+?)" + _TRAIL, re.I)
 DONE_SUFFIX = re.compile(r"^(.+?)\s+(?:done|ho\s*gaya|ho\s*gya|kar\s+diya|kar\s+liya|completed|finished)" + _TRAIL, re.I)
 DELETE_PREFIX = re.compile(r"^(?:delete|remove|cancel|drop|hatao|hata\s+do)\s*[:\-]?\s+(.+?)" + _TRAIL, re.I)
@@ -33,7 +41,7 @@ def _window(text: str) -> str:
     low = text.lower()
     if "overdue" in low:
         return "overdue"
-    if "week" in low or "hafte" in low:
+    if "week" in low or "hafte" in low or re.search(r"\bwek\b", low):
         return "week"
     return "today"
 
@@ -47,7 +55,11 @@ def fast_plan(text: str, sender: str, world: World, now: datetime) -> Optional[P
     if not t:
         return Plan(kind="no_plan")
 
-    if QUERY.search(t):
+    words = re.findall(r"[a-z']+", t.lower())
+    if words and all(w in GREETING_WORDS for w in words):
+        return Plan(kind="no_plan")
+
+    if QUERY_ONLY.match(t) or (not ACTION_START.match(t) and QUERY_CUE.search(t) and QUERY_TOPIC.search(t)):
         return Plan(kind="plan", ops=[ListDue(window=_window(t))])
 
     m = DONE_PREFIX.match(t) or DONE_SUFFIX.match(t)

@@ -43,6 +43,44 @@ PART_OF_DAY = {
 
 DEFAULT_TIME = time(9)
 
+# Typos people actually make. Exact fixes for short words; one-letter fuzzy
+# matching only for longer words where a near miss can't be another word
+# ("daily" is left out on purpose: "dairy" is one letter away).
+TYPO_FIXES = {"evry": "every", "evrey": "every", "eveyr": "every", "tmrow": "tomorrow", "tomrow": "tomorrow"}
+FUZZY_WORDS = [
+    "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+    "tomorrow", "monthly", "weekly", "morning", "evening", "afternoon", "tonight",
+]
+
+
+def _one_edit(a: str, b: str) -> bool:
+    if a == b or abs(len(a) - len(b)) > 1:
+        return a == b
+    if len(a) == len(b):
+        diffs = [i for i in range(len(a)) if a[i] != b[i]]
+        if len(diffs) == 1:
+            return True
+        # one swap of neighbours ("tomorow" vs "tommorow" is handled by length, this covers "fridya")
+        return len(diffs) == 2 and diffs[1] == diffs[0] + 1 and a[diffs[0]] == b[diffs[1]] and a[diffs[1]] == b[diffs[0]]
+    short, long_ = (a, b) if len(a) < len(b) else (b, a)
+    return any(long_[:i] + long_[i + 1:] == short for i in range(len(long_)))
+
+
+def _fix_word(m: re.Match) -> str:
+    word = m.group(0)
+    low = word.lower()
+    if low in TYPO_FIXES:
+        return TYPO_FIXES[low]
+    if len(low) >= 5 and low not in WEEKDAYS:
+        for good in FUZZY_WORDS:
+            if low != good and _one_edit(low, good):
+                return good
+    return word
+
+
+def fix_typos(text: str) -> str:
+    return re.sub(r"[A-Za-z]+", _fix_word, text)
+
 
 @dataclass
 class TimeResult:
@@ -102,7 +140,7 @@ def _bare_hour(h: int) -> int:
 
 
 def parse(text: str, now: datetime) -> TimeResult:
-    t = _Text(text)
+    t = _Text(fix_typos(text))
     res = TimeResult()
     today = now.date()
     day: Optional[date] = None
@@ -115,6 +153,7 @@ def parse(text: str, now: datetime) -> TimeResult:
         (r"\bevery\s+(\d{1,2})\s+weeks?\b", lambda m: Repeat(every=int(m.group(1)), unit="week")),
         (r"\b(?:every|har)\s+" + _WD + r"\b", lambda m: Repeat(every=1, unit="week", weekday=WEEKDAY_KEYS[WEEKDAYS[m.group(1)]])),
         (r"\b(?:every\s*day|everyday|daily|har\s+roz|roz)\b", lambda m: Repeat(every=1, unit="day")),
+        (r"\b(?:every|har)\s+(?=(?:morning|afternoon|evening|night|subah|dopahar|shaam|raat)\b)", lambda m: Repeat(every=1, unit="day")),
         (r"\b(?:every\s+week|weekly|har\s+hafte|har\s+hafta)\b", lambda m: Repeat(every=1, unit="week")),
         (r"\b(?:every\s+month|monthly|har\s+mahine|har\s+mahina)\b", lambda m: Repeat(every=1, unit="month")),
     ):
@@ -142,12 +181,16 @@ def parse(text: str, now: datetime) -> TimeResult:
             (r"\b(?:end\s+of\s+(?:the\s+)?month|month\s*end)\b", lambda m: _end_of_month(today)),
             (r"\b(?:1st|first)\s+of\s+next\s+month\b|\bnext\s+month\b", lambda m: _first_of_next_month(today)),
             (r"\b(?:this\s+)?weekend\b", lambda m: _next_weekday(today, 5, include_today=False)),
-            (r"\bnext\s+week\b", lambda m: _next_weekday(today, 0)),
+            (r"\b(?:next\s+week|agle\s+hafte|agle\s+week|next\s+wk)\b", lambda m: _next_weekday(today, 0)),
+            (r"\b(?:on\s+)?(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)\b(?:\s+of\b)?", lambda m: _day_of_month(today, int(m.group(1)))),
             (r"\b(?:next\s+|this\s+|on\s+)?" + _WD + r"\b", lambda m: _next_weekday(today, WEEKDAYS[m.group(1)])),
         ):
             m = t.find(pattern)
             if m:
-                day = resolver(m)
+                resolved = resolver(m)
+                if resolved is None:
+                    continue
+                day = resolved
                 # "tonight" also carries a time; leave the word for the time pass
                 if m.group(0).strip() == "tonight":
                     at = PART_OF_DAY["tonight"]
@@ -180,6 +223,8 @@ def parse(text: str, now: datetime) -> TimeResult:
     tz = now.tzinfo
     if absolute is not None:
         res.due = absolute
+    elif day is None and at is not None and res.repeat is not None:
+        res.due = _first_repeat(res.repeat, now, at)
     elif day is not None or at is not None:
         d = day or today
         clock = at or DEFAULT_TIME
@@ -194,21 +239,31 @@ def parse(text: str, now: datetime) -> TimeResult:
     return res
 
 
-def _first_repeat(rep: Repeat, now: datetime) -> datetime:
-    """Next matching occurrence at 09:00 for a repeat with no date in the message."""
+def _day_of_month(today: date, n: int) -> Optional[date]:
+    """"the 12th": this month if still ahead (or today), else next month."""
+    if not 1 <= n <= 31:
+        return None
+    if n >= today.day and n <= calendar.monthrange(today.year, today.month)[1]:
+        return today.replace(day=n)
+    nxt = _first_of_next_month(today)
+    return nxt.replace(day=min(n, calendar.monthrange(nxt.year, nxt.month)[1]))
+
+
+def _first_repeat(rep: Repeat, now: datetime, clock: time = DEFAULT_TIME) -> datetime:
+    """Next matching occurrence for a repeat with no date in the message."""
     tz = now.tzinfo
     today = now.date()
     if rep.unit == "week" and rep.weekday:
         d = _next_weekday(today, WEEKDAY_KEYS.index(rep.weekday), include_today=True)
-        due = datetime.combine(d, DEFAULT_TIME, tzinfo=tz)
+        due = datetime.combine(d, clock, tzinfo=tz)
         return due if due > now else due + timedelta(days=7)
-    due = datetime.combine(today, DEFAULT_TIME, tzinfo=tz)
+    due = datetime.combine(today, clock, tzinfo=tz)
     if due > now:
         return due
     if rep.unit == "month":
         nxt = _first_of_next_month(today)
         day = min(today.day, calendar.monthrange(nxt.year, nxt.month)[1])
-        return datetime.combine(nxt.replace(day=day), DEFAULT_TIME, tzinfo=tz)
+        return datetime.combine(nxt.replace(day=day), clock, tzinfo=tz)
     return due + timedelta(days=1)
 
 
