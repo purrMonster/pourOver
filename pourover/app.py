@@ -29,7 +29,9 @@ class Inbound(BaseModel):
 
 
 def build_service(settings: Settings) -> Service:
-    model = ModelClient(settings.llm_url, settings.llm_model) if settings.llm_url else None
+    auth = (settings.llm_user, settings.llm_password) if settings.llm_user else None
+    model = (ModelClient(settings.llm_url, settings.llm_model, timeout=settings.llm_timeout_s, auth=auth)
+             if settings.llm_url else None)
     return Service(
         users=settings.users,
         backend_for=lambda u: Vikunja(settings.vikunja_url, u.vikunja_token),
