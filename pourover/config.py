@@ -32,6 +32,9 @@ class Settings:
     queue_expiry_hours: int
     queue_interval_s: int
     users: dict[str, User]
+    llm_user: str = ""
+    llm_password: str = ""
+    llm_timeout_s: float = 60.0
     meowgram_url: str | None = None
     meowgram_bot_user: str = ""
     meowgram_bot_password: str = ""
@@ -71,6 +74,9 @@ def load_settings(env: dict[str, str] | None = None) -> Settings:
         vikunja_url=env["VIKUNJA_URL"].rstrip("/"),
         llm_url=env.get("LLM_URL") or None,
         llm_model=env.get("LLM_MODEL", "pourover"),
+        llm_user=env.get("LLM_USER", ""),
+        llm_password=env.get("LLM_PASSWORD", ""),
+        llm_timeout_s=float(env.get("LLM_TIMEOUT_S", "60")),
         ntfy_url=(env.get("NTFY_URL") or "").rstrip("/") or None,
         tz=ZoneInfo(env.get("POUROVER_TZ", "Asia/Kolkata")),
         queue_expiry_hours=int(env.get("POUROVER_QUEUE_EXPIRY_HOURS", "6")),

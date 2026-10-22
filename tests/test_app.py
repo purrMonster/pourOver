@@ -30,3 +30,21 @@ def test_inbound_requires_token_and_known_sender(world, tmp_path):
         assert c.post("/inbound", json={**body, "sender": "stranger"}, headers={"X-Pourover-Token": "s3cret"}).status_code == 403
         r = c.post("/inbound", json=body, headers={"X-Pourover-Token": "s3cret"})
         assert r.status_code == 200 and "Pay electricity bill" in r.json()["reply"]
+
+
+def test_model_endpoint_gets_basic_auth_when_a_user_is_set(tmp_path):
+    import httpx
+    from zoneinfo import ZoneInfo
+
+    from pourover.app import build_service
+
+    base = dict(db_path=str(tmp_path / "b.db"), inbound_token="x", vikunja_url="http://v", llm_url="http://llm",
+                llm_model="t", ntfy_url=None, tz=ZoneInfo("Asia/Kolkata"), queue_expiry_hours=6,
+                queue_interval_s=60, users=USERS)
+    plain = build_service(Settings(**base)).model
+    assert plain.client.auth is None
+    model = build_service(Settings(**base, llm_user="siamese", llm_password="pw", llm_timeout_s=90)).model
+    assert isinstance(model.client.auth, httpx.BasicAuth)
+    assert model.client.timeout.read == 90
+    request = next(model.client.auth.auth_flow(httpx.Request("POST", "http://llm/v1/chat/completions")))
+    assert request.headers["Authorization"] == httpx.BasicAuth("siamese", "pw")._auth_header

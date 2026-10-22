@@ -72,10 +72,13 @@ def build_messages(text: str, sender: str, world: World, now: datetime, hint: Op
 
 
 class ModelClient:
-    def __init__(self, base_url: str, model: str, timeout: float = 30.0, client: Optional[httpx.Client] = None):
+    def __init__(self, base_url: str, model: str, timeout: float = 30.0, client: Optional[httpx.Client] = None,
+                 auth: Optional[tuple[str, str]] = None):
+        """auth: HTTP Basic (user, password), for an endpoint behind a login such as
+        purrBrews' Authelia in front of llama-swap. None sends no credentials."""
         self.base_url = base_url.rstrip("/")
         self.model = model
-        self.client = client or httpx.Client(timeout=timeout)
+        self.client = client or httpx.Client(timeout=timeout, auth=auth)
         self.last_raw: Optional[str] = None  # last model reply, kept for eval reports and debugging
 
     def plan(self, text: str, sender: str, world: World, now: datetime, hint: Optional[TimeResult] = None) -> Plan:
