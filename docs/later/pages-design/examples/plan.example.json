@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "topic": { "ref": "groceries" },
+  "ops": [
+    {
+      "op": "add_items",
+      "items": [
+        { "title": "Spinach", "values": { "quantity": 500, "unit": "g", "category": "Veg" } },
+        { "title": "Dhaniya", "values": { "quantity": 1, "unit": "bunch", "category": "Veg" } },
+        { "title": "Paneer", "values": { "quantity": 200, "unit": "g", "category": "Dairy" } }
+      ]
+    }
+  ],
+  "answer": null
+}

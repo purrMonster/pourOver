@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "layout": "stack",
+  "sections": [
+    {
+      "widget": "checklist",
+      "title": "To buy",
+      "filter": { "status": "open" },
+      "group_by": "category",
+      "show": ["quantity", "unit"]
+    },
+    {
+      "widget": "checklist",
+      "title": "In the basket",
+      "filter": { "status": "done" },
+      "collapsed": true
+    }
+  ]
+}
