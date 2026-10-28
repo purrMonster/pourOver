@@ -1,0 +1,13 @@
+# pourOver topic template (design draft, not yet consumed by any code)
+key: groceries
+name: Groceries
+fields:
+  - { key: quantity, type: quantity }
+  - { key: category, type: choice,
+      options: [Veg, Fruit, Dairy, Staples, Spices, Meat and fish, Household, Other] }
+view: default-checklist-by-category
+instructions: |
+  Expand dishes into ingredients for 2 people unless told otherwise.
+  Use metric units. Keep the name the user typed (dhaniya stays dhaniya).
+  Merge with existing open items instead of adding duplicates.
+  Skip pantry basics (salt, oil, water) unless asked.
